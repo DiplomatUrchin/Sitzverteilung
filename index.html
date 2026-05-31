@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sitzrechner</title>
+
+<script src="./chart.umd.min.js"></script>
+
+<style>
+body{
+    font-family:Arial,sans-serif;
+    background:#f2f2f2;
+    margin:0;
+    padding:15px;
+}
+
+.container{
+    max-width:700px;
+    margin:auto;
+    background:white;
+    padding:15px;
+    border-radius:12px;
+    box-shadow:0 0 10px rgba(0,0,0,0.1);
+}
+
+h2{
+    margin-top:0;
+}
+
+.active{
+    font-size:14px;
+    color:#666;
+    margin-bottom:10px;
+}
+
+.grid{
+    display:grid;
+    grid-template-columns:repeat(2, 1fr);
+    gap:10px;
+}
+
+input{
+    width:100%;
+    padding:10px;
+    border:1px solid #ccc;
+    border-radius:8px;
+    box-sizing:border-box;
+}
+
+.party{
+    display:grid;
+    grid-template-columns: 1fr 120px;
+    gap:10px;
+    margin-bottom:10px;
+    align-items:center;
+}
+
+.partyName{
+    background:#f7f7f7;
+    padding:10px;
+    border-radius:8px;
+    font-weight:bold;
+}
+
+button{
+    border:none;
+    padding:10px;
+    border-radius:8px;
+    cursor:pointer;
+    margin-top:8px;
+}
+
+.calc{background:#2ecc71;color:white;}
+.save{background:#9b59b6;color:white;}
+.new{background:#3498db;color:white;}
+.load{background:#f39c12;color:white;}
+.del{background:#e74c3c;color:white;}
+
+#chartContainer{
+    margin-top:20px;
+    height:300px;
+}
+
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>Sitzrechner</h2>
+<div class="active" id="activeEntry">Aktiver Eintrag: keiner</div>
+
+<div class="grid">
+    <input type="number" id="A" placeholder="Wähler">
+    <input type="number" id="B" placeholder="Sitze">
+</div>
+
+<div id="parteien"></div>
+
+<button class="calc" onclick="berechnen()">Berechnen</button>
+
+<hr>
+
+<input type="text" id="saveName" placeholder="Name">
+<button class="new" onclick="neuSpeichern()">Neuer Eintrag</button>
+<button class="save" onclick="aendernSpeichern()">Änderung speichern</button>
+
+<select id="saveSelect"></select>
+<button class="del" onclick="loeschen()">Löschen</button>
+<hr>
+
+<button class="new" onclick="exportData()">Export</button>
+
+<input type="file" id="importFile" style="display:none" onchange="importData(event)">
+<button class="load" onclick="document.getElementById('importFile').click()">Import</button>
+<div id="result" style="margin-top:15px;">Noch keine Berechnung.</div>
+
+<div id="chartContainer">
+    <canvas id="seatChart"></canvas>
+</div>
+
+<div id="overview" style="margin-top:20px; padding:10px; background:#f7f7f7; border-radius:10px;">
+    <h3>Gesamtübersicht (alle Einträge)</h3>
+    <div id="overviewContent">Keine Daten</div>
+</div>
+
+</div>
+
+<script>
+
+const parteienListe = [
+    "CDU/CSU","FDP","SPD","Grüne","Linke","AfD","BSW","FW"
+];
+
+const parteiFarben = {
+    "CDU/CSU": "#000000",
+    "FDP": "#FFD700",
+    "AfD": "#1E5BFF",
+    "Linke": "#FF4FA3",
+    "SPD": "#E3000F",
+    "BSW": "#7B2CBF",
+    "FW": "#FF8C00",
+    "Grüne": "#1AAE3A"
+};
+
+let chart = null;
+let activeKey = null;
+
+function setActive(name){
+    document.getElementById("activeEntry").textContent =
+        "Aktiver Eintrag: " + (name || "keiner");
+}
+
+function createInputs(){
+    const container = document.getElementById("parteien");
+    container.innerHTML = "";
+
+    parteienListe.forEach(name => {
+        const div = document.createElement("div");
+        div.className = "party";
+        div.innerHTML = `
+            <div class="partyName">${name}</div>
+            <input type="number" class="percentInput" placeholder="%">
+        `;
+        container.appendChild(div);
+    });
+}
+
+function berechnen(){
+
+    const A = +document.getElementById("A").value || 0;
+    const B = +document.getElementById("B").value || 1;
+
+    const percents = [...document.querySelectorAll(".percentInput")]
+        .map(i => +i.value || 0);
+
+    const sum = percents.reduce((a,b)=>a+b,0);
+    let divisor = (A * (sum/100)) / B;
+
+    function calc(div){
+        let sitze = percents.map(p => Math.round((A*(p/100))/div));
+        let sumSitze = sitze.reduce((a,b)=>a+b,0);
+        return {sitze,sumSitze};
+    }
+
+    let res = calc(divisor);
+
+    document.getElementById("result").innerHTML =
+        `<div>Divisor: ${Math.round(divisor)}</div><div>Sitze: ${res.sumSitze}/${B}</div><hr>` +
+        res.sitze.map((s,i)=>`<div><b>${parteienListe[i]}</b>: ${s}</div>`).join("");
+
+    updateChart(res.sitze);
+}
+
+function exportData(){
+
+    const data = {};
+
+    Object.keys(localStorage)
+        .filter(k => k.startsWith("sitz_"))
+        .forEach(k => {
+            data[k] = JSON.parse(localStorage.getItem(k));
+        });
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json"
+    });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sitzrechner_export.json";
+    a.click();
+
+    URL.revokeObjectURL(url);
+}
+
+function importData(event){
+
+    const file = event.target.files[0];
+    if(!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = function(e){
+
+        try {
+            const data = JSON.parse(e.target.result);
+
+            Object.keys(data).forEach(key => {
+                if(key.startsWith("sitz_")){
+                    localStorage.setItem(key, JSON.stringify(data[key]));
+                }
+            });
+
+            updateSelect();
+            updateOverview();
+
+            alert("Import erfolgreich");
+        } 
+        catch(err){
+            alert("Fehler beim Import");
+        }
+    };
+
+    reader.readAsText(file);
+}
+
+function updateChart(data){
+
+    const ctx = document.getElementById("seatChart").getContext("2d");
+    if(chart) chart.destroy();
+
+    chart = new Chart(ctx,{
+        type:"doughnut",
+        data:{
+            labels:parteienListe,
+            datasets:[{
+                data:data,
+                backgroundColor:parteienListe.map(p=>parteiFarben[p])
+            }]
+        },
+        options:{
+            maintainAspectRatio:false,
+            rotation:-90,
+            circumference:180
+        }
+    });
+}
+
+function updateOverview(){
+
+    const totals = {};
+
+    parteienListe.forEach(p => totals[p] = 0);
+
+    Object.keys(localStorage)
+        .filter(k => k.startsWith("sitz_"))
+        .forEach(k => {
+
+            const data = JSON.parse(localStorage.getItem(k));
+
+            if(!data || !data.percents) return;
+
+            const A = +data.A || 0;
+            const B = +data.B || 1;
+
+            const percents = data.percents.map(v => +v || 0);
+            const sum = percents.reduce((a,b)=>a+b,0);
+
+            let divisor = (A * (sum/100)) / B;
+
+            function calc(div){
+                return percents.map(p => Math.round((A*(p/100))/div));
+            }
+
+            const sitze = calc(divisor);
+
+            sitze.forEach((s,i)=>{
+                const name = parteienListe[i];
+                totals[name] += s;
+            });
+        });
+
+    let html = "";
+
+    Object.entries(totals)
+        .sort((a,b)=>b[1]-a[1])
+        .forEach(([name,val])=>{
+            html += `<div><b>${name}</b>: ${val}</div>`;
+        });
+
+    document.getElementById("overviewContent").innerHTML =
+        html || "Keine gespeicherten Daten";
+}
+
+function neuSpeichern(){
+
+    const name = document.getElementById("saveName").value.trim();
+    if(!name) return alert("Name fehlt");
+
+    const data = getFormData();
+    const key = "sitz_" + name;
+
+    localStorage.setItem(key, JSON.stringify(data));
+    activeKey = key;
+
+    setActive(name);
+    updateSelect();
+    updateOverview();
+}
+
+function aendernSpeichern(){
+
+    if(!activeKey) return alert("Kein aktiver Eintrag");
+
+    const data = getFormData();
+    localStorage.setItem(activeKey, JSON.stringify(data));
+
+    updateSelect();
+    updateOverview();
+}
+
+
+function getFormData(){
+    return {
+        A: document.getElementById("A").value,
+        B: document.getElementById("B").value,
+        percents: [...document.querySelectorAll(".percentInput")].map(i=>i.value)
+    };
+}
+
+function laden(){
+
+    const key = document.getElementById("saveSelect").value;
+    if(!key) return;
+
+    const data = JSON.parse(localStorage.getItem(key));
+
+    document.getElementById("A").value = data.A;
+    document.getElementById("B").value = data.B;
+
+    createInputs();
+
+    document.querySelectorAll(".percentInput").forEach((i,idx)=>{
+        i.value = data.percents[idx] || 0;
+    });
+
+    activeKey = key;
+    setActive(key.replace("sitz_",""));
+
+    berechnen();
+    updateOverview();
+}
+
+function updateSelect(){
+
+    const sel = document.getElementById("saveSelect");
+    sel.innerHTML = "";
+
+    const entries = Object.keys(localStorage)
+        .filter(k => k.startsWith("sitz_"))
+        .map(k => ({
+            key: k,
+            name: k.replace("sitz_", "")
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, "de"));
+
+    entries.forEach(entry => {
+        const opt = document.createElement("option");
+        opt.value = entry.key;
+        opt.textContent = entry.name;
+        sel.appendChild(opt);
+    });
+}
+
+function loeschen(){
+
+    const key = document.getElementById("saveSelect").value;
+    if(!key) return;
+
+    if(!confirm("Wirklich löschen?")) return;
+
+    localStorage.removeItem(key);
+
+    if(activeKey === key){
+        activeKey = null;
+        setActive(null);
+    }
+
+    updateSelect();
+    updateOverview();
+}
+
+createInputs();
+updateSelect();
+updateOverview();
+setActive(null);
+document.getElementById("saveSelect").addEventListener("change", laden);
+</script>
+
+</body>
+</html>

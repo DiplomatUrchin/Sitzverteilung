@@ -5,12 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sitzrechner</title>
 
-<script src="./chart.umd.min.js"></script>
+<script src="./chart.umd.min.js?v=" + new Date().getTime() + "></script>
 
 <style>
 body{
     font-family:Arial,sans-serif;
-    background:#f2f2f2;
+    background:#0f1117;
+    color:#f1f1f1;
     margin:0;
     padding:15px;
 }
@@ -18,68 +19,165 @@ body{
 .container{
     max-width:700px;
     margin:auto;
-    background:white;
-    padding:15px;
-    border-radius:12px;
-    box-shadow:0 0 10px rgba(0,0,0,0.1);
+    background:#1a1d26;
+    padding:20px;
+    border-radius:18px;
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,0.04),
+        0 10px 30px rgba(0,0,0,0.45);
 }
 
 h2{
     margin-top:0;
+    color:white;
+    font-size:30px;
+}
+
+h3{
+    margin-top:0;
+    color:white;
 }
 
 .active{
     font-size:14px;
-    color:#666;
-    margin-bottom:10px;
+    color:#9ca3af;
+    margin-bottom:14px;
 }
 
 .grid{
     display:grid;
-    grid-template-columns:repeat(2, 1fr);
-    gap:10px;
+    grid-template-columns:repeat(2,1fr);
+    gap:12px;
 }
 
-input{
+.grid{
+    margin-bottom:14px;
+}
+
+input,
+select{
     width:100%;
-    padding:10px;
-    border:1px solid #ccc;
-    border-radius:8px;
+    padding:11px;
+    border:1px solid #303543;
+    border-radius:10px;
     box-sizing:border-box;
+    background:#252a36;
+    color:white;
+    font-size:15px;
+    transition:0.2s;
+}
+
+input:focus,
+select:focus{
+    outline:none;
+    border-color:#4f8cff;
+    box-shadow:0 0 0 3px rgba(79,140,255,0.2);
+}
+
+input::placeholder{
+    color:#8a8f9c;
 }
 
 .party{
     display:grid;
-    grid-template-columns: 1fr 120px;
+    grid-template-columns:minmax(140px,1fr) 120px;
     gap:10px;
     margin-bottom:10px;
     align-items:center;
 }
 
 .partyName{
-    background:#f7f7f7;
-    padding:10px;
-    border-radius:8px;
+    background:#252a36;
+    padding:11px;
+    border-radius:10px;
     font-weight:bold;
+    border:1px solid #303543;
 }
 
 button{
     border:none;
-    padding:10px;
-    border-radius:8px;
+    padding:11px 14px;
+    border-radius:10px;
     cursor:pointer;
     margin-top:8px;
+    font-weight:bold;
+    transition:0.2s;
+    color:white;
 }
 
-.calc{background:#2ecc71;color:white;}
-.save{background:#9b59b6;color:white;}
-.new{background:#3498db;color:white;}
-.load{background:#f39c12;color:white;}
-.del{background:#e74c3c;color:white;}
+button:hover{
+    transform:translateY(-1px);
+    filter:brightness(1.08);
+}
+
+button:active{
+    transform:scale(0.98);
+}
+
+.calc{
+    background:linear-gradient(135deg,#19c37d,#13a564);
+}
+
+.save{
+    background:linear-gradient(135deg,#9b59b6,#7d3c98);
+}
+
+.new{
+    background:linear-gradient(135deg,#3b82f6,#2563eb);
+}
+
+.load{
+    background:linear-gradient(135deg,#f59e0b,#d97706);
+}
+
+.del{
+    background:linear-gradient(135deg,#ef4444,#dc2626);
+}
+
+hr{
+    border:none;
+    height:1px;
+    background:#303543;
+    margin:18px 0;
+}
 
 #chartContainer{
+    margin-top:25px;
+    height:320px;
+    background:#141821;
+    border-radius:14px;
+    padding:10px;
+    border:1px solid #2a3040;
+}
+
+#result{
+    margin-top:15px;
+    background:#141821;
+    padding:14px;
+    border-radius:12px;
+    border:1px solid #2a3040;
+    line-height:1.7;
+}
+
+#overview{
     margin-top:20px;
-    height:300px;
+    padding:15px;
+    background:#141821 !important;
+    border-radius:14px;
+    border:1px solid #2a3040;
+}
+
+#overviewContent div{
+    padding:6px 0;
+    border-bottom:1px solid #252a36;
+}
+
+#overviewContent div:last-child{
+    border-bottom:none;
+}
+
+canvas{
+    filter:drop-shadow(0 0 12px rgba(255,255,255,0.05));
 }
 
 
@@ -133,6 +231,18 @@ button{
 
 const parteienListe = [
     "CDU/CSU","FDP","SPD","Grüne","Linke","AfD","BSW","FW"
+];
+
+const chartOrder = [
+    "Linke",
+    "Grüne",
+    "SPD",
+    "BSW",
+    "FDP",
+    "FW",
+    "CDU/CSU",
+
+    "AfD"
 ];
 
 const parteiFarben = {
@@ -254,13 +364,18 @@ function updateChart(data){
     const ctx = document.getElementById("seatChart").getContext("2d");
     if(chart) chart.destroy();
 
+    const mappedData = chartOrder.map(name => {
+        const idx = parteienListe.indexOf(name);
+        return data[idx] || 0;
+    });
+
     chart = new Chart(ctx,{
         type:"doughnut",
         data:{
-            labels:parteienListe,
+            labels: chartOrder,
             datasets:[{
-                data:data,
-                backgroundColor:parteienListe.map(p=>parteiFarben[p])
+                data: mappedData,
+                backgroundColor: chartOrder.map(p => parteiFarben[p])
             }]
         },
         options:{
@@ -342,6 +457,19 @@ function aendernSpeichern(){
 
     updateSelect();
     updateOverview();
+
+    // WICHTIG: Diagramm + Berechnung aktualisieren
+    createInputs();
+
+    const saved = JSON.parse(localStorage.getItem(activeKey));
+    document.getElementById("A").value = saved.A;
+    document.getElementById("B").value = saved.B;
+
+    document.querySelectorAll(".percentInput").forEach((i, idx) => {
+        i.value = saved.percents[idx] || 0;
+    });
+
+    berechnen();
 }
 
 
@@ -395,6 +523,11 @@ function updateSelect(){
         opt.textContent = entry.name;
         sel.appendChild(opt);
     });
+
+    // WICHTIG: Auswahl wiederherstellen
+    if (activeKey) {
+        sel.value = activeKey;
+    }
 }
 
 function loeschen(){
